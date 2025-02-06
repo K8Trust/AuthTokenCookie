@@ -150,10 +150,10 @@ func main() {
 
 	// Configure the plugin with default values
 	cfg := &Config{
-		// Conf will be provided through the plugin configuration
+		Conf:    "http://internal-auth.example.local/test/auth/api-key",
 		Timeout: 30 * time.Second,
 	}
-
+	
 	// Create the plugin middleware.
 	handler, err := New(context.Background(), nextHandler, cfg, "auth_cookie")
 	if err != nil {
