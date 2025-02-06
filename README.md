@@ -112,6 +112,42 @@ The plugins must be placed in `./plugins-local` directory, which should be in th
 
 ## Development
 
+### Working with Project Files
+
+The repository includes several important files for development and testing:
+
+- **`main.go`**: The core plugin implementation.
+- **`main.test.go`**: Contains unit tests for validating the authentication logic.
+- **`auth_server.go`**: A mock authentication server for local testing.
+- **`go.mod`**: Dependency management file for the Go module.
+- **`.golangci.yml`**: Linter configuration.
+- **`.traefik.yml`**: Configuration file for Traefik integration.
+
+### Running the Plugin Locally
+
+1. **Start the Mock Authentication Server**
+
+   If you need a test auth server, run:
+   ```sh
+   go run auth_server.go
+   ```
+   This will start an authentication server at `http://localhost:9000/test/auth/api-key`.
+
+2. **Run the Middleware Plugin**
+   ```sh
+   go run main.go
+   ```
+   This will start the middleware on `http://localhost:8080`.
+
+3. **Test the Middleware**
+   ```sh
+   curl -v -H "x-api-key: test123" -H "x-account: test" http://localhost:8080
+   ```
+   Expected response:
+   ```json
+   {"token": "mocked-token"}
+   ```
+
 ### Building
 
 ```bash
@@ -139,7 +175,7 @@ docker build -t authtokencookie .
 ## Security Considerations
 
 - The plugin sets cookies with both `HttpOnly` and `Secure` flags
-- Authentication is performed over internal network only
+- Authentication is performed over an internal network only
 - API keys and tokens are handled securely
 
 ## License
@@ -154,3 +190,4 @@ Contributions are welcome! Please submit a pull request or open an issue for dis
 
 - [Yousef Shamshoum](https://github.com/yousef-shamshoum)
 - [Shay](https://github.com/shay)
+

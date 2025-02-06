@@ -5,4 +5,4 @@ summary: 'A Traefik middleware plugin that performs authentication and sets a se
 iconPath: .assets/icon.png
 testData:
   conf: "http://internal-auth.example.local/test/auth/api-key"
-  timeout: "30s"
+  timeout: "5s"

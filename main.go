@@ -1,8 +1,3 @@
-// main.go
-//
-// Package main implements an HTTP middleware plugin that performs an authentication
-// check by calling an internal auth server. It then sets a cookie in the response
-// containing the access token with HttpOnly and Secure flags enabled.
 package main
 
 import (
@@ -17,8 +12,6 @@ import (
 
 // Config holds the plugin configuration.
 type Config struct {
-	// Conf should be a full URL (e.g., "http://auth-service/verify")
-	// This will be provided through Traefik's plugin configuration
 	Conf    string        `json:"conf,omitempty"`
 	Timeout time.Duration `json:"timeout,omitempty"`
 }
@@ -56,7 +49,7 @@ func New(_ context.Context, next http.Handler, config *Config, name string) (htt
 	}
 
 	timeout := config.Timeout
-	if timeout == 0 {
+	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
 
@@ -71,96 +64,90 @@ func New(_ context.Context, next http.Handler, config *Config, name string) (htt
 
 // ServeHTTP implements the middleware logic.
 func (a *AuthPlugin) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	// Extract required headers.
 	apiKey := req.Header.Get("x-api-key")
 	tenant := req.Header.Get("x-account")
+
+	fmt.Println("Received request with headers:")
+	fmt.Println("x-api-key:", apiKey)
+	fmt.Println("x-account:", tenant)
+
 	if apiKey == "" || tenant == "" {
+		fmt.Println("Missing required headers, returning 401")
 		http.Error(rw, `{"error": "Unauthorized"}`, http.StatusUnauthorized)
 		return
 	}
 
-	// Build the auth server URL using plain HTTP.
 	authURL := fmt.Sprintf("http://%s%s", a.endpointHost, a.endpointPath)
 	fmt.Println("Auth URL:", authURL)
-	// Create an HTTP request to the auth server.
+
 	authReq, err := http.NewRequest(http.MethodGet, authURL, nil)
 	if err != nil {
+		fmt.Println("Failed to create auth request:", err)
 		http.Error(rw, `{"error": "Internal error"}`, http.StatusInternalServerError)
 		return
 	}
-
-	// Pass along the necessary headers.
 	authReq.Header.Set("x-api-key", apiKey)
 	authReq.Header.Set("x-account", tenant)
 
-	// Perform the auth request.
-	client := &http.Client{
-		Timeout: a.timeout,
-	}
+	client := &http.Client{Timeout: a.timeout}
 	resp, err := client.Do(authReq)
 	if err != nil {
+		fmt.Println("Auth request failed:", err)
 		http.Error(rw, `{"error": "Internal error"}`, http.StatusInternalServerError)
 		return
 	}
 	defer resp.Body.Close()
 
-	// Read the response body.
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		fmt.Println("Failed to read auth response:", err)
 		http.Error(rw, `{"error": "Internal error"}`, http.StatusInternalServerError)
 		return
 	}
 
-	// Propagate non-200 responses from the auth server.
+	fmt.Println("Auth server response:", string(body))
+
 	if resp.StatusCode != http.StatusOK {
+		fmt.Println("Auth server returned non-200:", resp.StatusCode)
 		rw.WriteHeader(resp.StatusCode)
 		_, _ = rw.Write(body)
 		return
 	}
 
-	// Parse the JSON response.
 	var authResp authResponse
 	if err := json.Unmarshal(body, &authResp); err != nil {
+		fmt.Println("Failed to parse auth response JSON:", err)
 		http.Error(rw, `{"error": "Internal error"}`, http.StatusInternalServerError)
 		return
 	}
 
-	// Set a cookie in the response with the access token.
 	cookie := &http.Cookie{
 		Name:     "token",
 		Value:    authResp.AccessToken,
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   true,
-		// Optionally, add SameSite, Expires, etc.
 	}
 	http.SetCookie(rw, cookie)
-
-	// Continue with the next handler.
+	fmt.Println("Auth successful, cookie set, passing request to next handler")
 	a.next.ServeHTTP(rw, req)
 }
 
-// main() is provided for local testing purposes. In a production Traefik deployment,
-// Traefik would load the plugin using the New() factory.
 func main() {
-	// A simple downstream handler that echoes "OK".
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("OK"))
 	})
 
-	// Configure the plugin with default values
 	cfg := &Config{
-		Conf:    "http://internal-auth.example.local/test/auth/api-key",
+		Conf:    "http://localhost:9000/test/auth/api-key", // Change to actual auth server URL
 		Timeout: 30 * time.Second,
 	}
-	
-	// Create the plugin middleware.
+
 	handler, err := New(context.Background(), nextHandler, cfg, "auth_cookie")
 	if err != nil {
 		panic(err)
 	}
 
-	// Start a local server on port 8080.
 	fmt.Println("Starting server on :8080")
 	if err := http.ListenAndServe(":8080", handler); err != nil {
 		panic(err)
