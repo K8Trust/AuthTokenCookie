@@ -62,12 +62,10 @@ func New(_ context.Context, next http.Handler, config *Config, name string) (htt
     logger := log.New(os.Stdout, "[AuthPlugin] ", log.LstdFlags)
     logger.Printf("Initializing plugin with endpoint: %s, timeout: %v", config.Conf, timeout)
 
-    // Instead of failing on health check, just log the warning
-    client := &http.Client{Timeout: 2 * time.Second}
-    req, err := http.NewRequest(http.MethodHead, config.Conf, nil)
-    if err != nil {
-        logger.Printf("[Warning] Failed to create health check request: %v", err)
-    } else {
+    // Run health check asynchronously to avoid blocking Yaegi plugin load
+    go func() {
+        client := &http.Client{Timeout: 2 * time.Second}
+        req, _ := http.NewRequest(http.MethodHead, config.Conf, nil)
         resp, err := client.Do(req)
         if err != nil {
             logger.Printf("[Warning] Auth endpoint not reachable during initialization: %v", err)
@@ -79,7 +77,7 @@ func New(_ context.Context, next http.Handler, config *Config, name string) (htt
                 logger.Printf("[Health Check] Endpoint is reachable at %s", config.Conf)
             }
         }
-    }
+    }()
 
     return &AuthPlugin{
         next:         next,
