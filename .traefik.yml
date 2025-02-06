@@ -7,5 +7,5 @@ testData:
   headers:
     x-api-key: "test-key"
     x-account: "test-account"
-  conf: "http://localhost:9000/test/auth/api-key"
+  conf: "http://example.com/auth"
   timeout: "5s"

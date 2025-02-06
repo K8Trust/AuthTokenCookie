@@ -39,6 +39,7 @@ type AuthPlugin struct {
     logger       *log.Logger
 }
 
+// New creates a new instance of the plugin.
 func New(_ context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
     if config.Conf == "" {
         return nil, fmt.Errorf("conf cannot be empty")
@@ -61,24 +62,24 @@ func New(_ context.Context, next http.Handler, config *Config, name string) (htt
     logger := log.New(os.Stdout, "[AuthPlugin] ", log.LstdFlags)
     logger.Printf("Initializing plugin with endpoint: %s, timeout: %v", config.Conf, timeout)
 
-    // Health check during initialization
+    // Instead of failing on health check, just log the warning
     client := &http.Client{Timeout: 2 * time.Second}
     req, err := http.NewRequest(http.MethodHead, config.Conf, nil)
     if err != nil {
-        return nil, fmt.Errorf("failed to create health check request: %v", err)
+        logger.Printf("[Warning] Failed to create health check request: %v", err)
+    } else {
+        resp, err := client.Do(req)
+        if err != nil {
+            logger.Printf("[Warning] Auth endpoint not reachable during initialization: %v", err)
+        } else {
+            defer resp.Body.Close()
+            if resp.StatusCode >= 500 {
+                logger.Printf("[Warning] Auth endpoint returned status %d during initialization", resp.StatusCode)
+            } else {
+                logger.Printf("[Health Check] Endpoint is reachable at %s", config.Conf)
+            }
+        }
     }
-
-    resp, err := client.Do(req)
-    if err != nil {
-        return nil, fmt.Errorf("auth endpoint unreachable: %v", err)
-    }
-    defer resp.Body.Close()
-
-    if resp.StatusCode >= 500 {
-        return nil, fmt.Errorf("auth endpoint returned server error: %d", resp.StatusCode)
-    }
-
-    logger.Printf("[Health Check] Endpoint is reachable at %s", config.Conf)
 
     return &AuthPlugin{
         next:         next,
