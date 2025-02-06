@@ -4,5 +4,8 @@ import: github.com/K8Trust/AuthTokenCookie
 summary: 'A Traefik middleware plugin that performs authentication and sets a secure cookie with the access token'
 iconPath: .assets/icon.png
 testData:
-  conf: "http://internal-auth.example.local/test/auth/api-key"
+  headers:
+    x-api-key: "test-key"
+    x-account: "test-account"
+  conf: "http://localhost:9000/test/auth/api-key"
   timeout: "5s"
