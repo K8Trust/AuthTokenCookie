@@ -37,7 +37,7 @@ type AuthPlugin struct {
 	logger       *log.Logger
 }
 
-const Timeout = 30 * time.Second
+const Timeout = 5 * time.Second
 
 // New creates a new instance of the plugin.
 func New(_ context.Context, next http.Handler, cfg *Config, name string) (http.Handler, error) {
