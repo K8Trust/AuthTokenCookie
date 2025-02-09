@@ -18,9 +18,9 @@ func fakeAuthServer(t *testing.T, status int, token string) *httptest.Server {
 			Name:  "token",
 			Value: token,
 		}
-		http.SetCookie(w, cookie)
 		w.WriteHeader(status)
-		resp := authResponse{AccessToken: token}
+		http.SetCookie(w, cookie)
+		resp := AuthResponse{AccessToken: token}
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			t.Fatalf("could not encode response: %v", err)
 		}

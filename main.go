@@ -26,7 +26,7 @@ func CreateConfig() *Config {
 	}
 }
 
-type authResponse struct {
+type AuthResponse struct {
 	AccessToken string `json:"accessToken"`
 }
 
@@ -132,7 +132,7 @@ func (a *AuthPlugin) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var authResp authResponse
+	var authResp AuthResponse
 	if err := json.Unmarshal(body, &authResp); err != nil {
 		a.logger.Printf("Failed to parse auth response: %v", err)
 		http.Error(rw, `{"error": "Internal error"}`, http.StatusInternalServerError)
