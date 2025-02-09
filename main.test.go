@@ -2,18 +2,23 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
-	"context"
 )
 
 // fakeAuthServer creates a test HTTP server simulating the auth server.
 func fakeAuthServer(t *testing.T, status int, token string) *httptest.Server {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		// Add cookie before writing status
+		cookie := &http.Cookie{
+			Name:  "token",
+			Value: token,
+		}
+		http.SetCookie(w, cookie)
 		w.WriteHeader(status)
 		resp := authResponse{AccessToken: token}
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
@@ -27,17 +32,18 @@ func TestAuthPluginSuccess(t *testing.T) {
 	// Create a fake auth server that returns HTTP 200 with a token.
 	fakeServer := fakeAuthServer(t, http.StatusOK, "test-token")
 	defer fakeServer.Close()
-
+	// fakeServer.URL, // Full URL; our plugin will parse this.
 	// Create a config using the fake auth server's URL.
-	cfg := &Config{
-		Conf:    fakeServer.URL, // Full URL; our plugin will parse this.
-		Timeout: 5 * time.Second,
-	}
 
 	// Create a simple next handler.
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("OK"))
 	})
+
+	cfg := &Config{
+		AuthEndpoint: fakeServer.URL,
+		Timeout:      Timeout,
+	}
 
 	// Create the plugin.
 	plugin, err := New(context.Background(), nextHandler, cfg, "auth_cookie")
@@ -80,16 +86,13 @@ func TestAuthPluginSuccess(t *testing.T) {
 }
 
 func TestAuthPluginUnauthorized(t *testing.T) {
-	// Create a dummy config.
-	cfg := &Config{
-		Conf:    "http://dummy/auth",
-		Timeout: 5 * time.Second,
-	}
 
 	// Next handler that should not be called.
 	nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("next handler should not be called for unauthorized requests")
 	})
+
+	cfg := CreateConfig()
 
 	// Create the plugin.
 	plugin, err := New(context.Background(), nextHandler, cfg, "auth_cookie")

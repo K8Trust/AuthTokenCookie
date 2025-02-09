@@ -8,21 +8,21 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"time"
 )
 
 // Config holds the plugin configuration.
 type Config struct {
-	Conf    string        `json:"conf,omitempty"`
-	Timeout time.Duration `json:"timeout,omitempty"`
+	AuthEndpoint string        `json:"authEndpoint,omitempty"`
+	Timeout      time.Duration `json:"timeout,omitempty"`
 }
 
 // CreateConfig creates the default plugin configuration.
 func CreateConfig() *Config {
 	return &Config{
-		Timeout: 5 * time.Second,
+		AuthEndpoint: "http://localhost:9000/test/auth/api-key",
+		Timeout:      Timeout,
 	}
 }
 
@@ -32,43 +32,27 @@ type authResponse struct {
 
 type AuthPlugin struct {
 	next         http.Handler
-	endpointHost string
-	endpointPath string
-	timeout      time.Duration
+	authEndpoint string
 	name         string
 	logger       *log.Logger
 }
 
+const Timeout = 30 * time.Second
+
 // New creates a new instance of the plugin.
-func New(_ context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
-	if config.Conf == "" {
-		return nil, fmt.Errorf("conf cannot be empty")
-	}
-
-	parsedURL, err := url.Parse(config.Conf)
-	if err != nil {
-		return nil, fmt.Errorf("invalid auth endpoint URL: %v", err)
-	}
-
-	if config.Timeout > 10*time.Second {
-		return nil, fmt.Errorf("timeout cannot exceed 10 seconds")
-	}
-
-	timeout := config.Timeout
-	if timeout <= 0 {
-		timeout = 5 * time.Second
+func New(_ context.Context, next http.Handler, cfg *Config, name string) (http.Handler, error) {
+	if cfg.AuthEndpoint == "" {
+		return nil, fmt.Errorf("missing auth endpoint")
 	}
 
 	logger := log.New(os.Stdout, "[AuthPlugin] ", log.LstdFlags)
-	logger.Printf("Initializing plugin with endpoint: %s, timeout: %v", config.Conf, timeout)
+	logger.Printf("Initializing plugin with endpoint: %s, timeout: %v", cfg.AuthEndpoint, Timeout)
 
 	return &AuthPlugin{
 		next:         next,
-		endpointHost: parsedURL.Host,
-		endpointPath: parsedURL.Path,
-		timeout:      timeout,
-		name:         name,
+		authEndpoint: cfg.AuthEndpoint,
 		logger:       logger,
+		name:         name,
 	}, nil
 }
 
@@ -109,10 +93,7 @@ func (a *AuthPlugin) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	authURL := fmt.Sprintf("http://%s%s", a.endpointHost, a.endpointPath)
-	a.logger.Printf("Making auth request to: %s for account: %s", authURL, tenant)
-
-	authReq, err := http.NewRequest(http.MethodGet, authURL, nil)
+	authReq, err := http.NewRequest(http.MethodGet, a.authEndpoint, nil)
 	if err != nil {
 		a.logger.Printf("Failed to create auth request: %v", err)
 		http.Error(rw, `{"error": "Internal error"}`, http.StatusInternalServerError)
@@ -121,11 +102,11 @@ func (a *AuthPlugin) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	authReq.Header.Set("x-api-key", apiKey)
 	authReq.Header.Set("x-account", tenant)
 
-	client := &http.Client{Timeout: a.timeout}
+	client := &http.Client{Timeout: Timeout}
 	resp, err := client.Do(authReq)
 	if err != nil {
 		if err, ok := err.(net.Error); ok && err.Timeout() {
-			a.logger.Printf("Auth request timed out after %v: %v", a.timeout, err)
+			a.logger.Printf("Auth request timed out after %v: %v", Timeout, err)
 			http.Error(rw, `{"error": "Auth service timeout"}`, http.StatusGatewayTimeout)
 			return
 		}
@@ -186,12 +167,9 @@ func main() {
 		_, _ = w.Write([]byte("OK"))
 	})
 
-	cfg := &Config{
-		Conf:    "http://localhost:9000/test/auth/api-key",
-		Timeout: 5 * time.Second,
-	}
+	cfg := CreateConfig()
 
-	handler, err := New(context.Background(), nextHandler, cfg, "auth_cookie")
+	handler, err := New(context.Background(), nextHandler, cfg, "auth-cookie")
 	if err != nil {
 		logger.Fatalf("Failed to create handler: %v", err)
 	}
