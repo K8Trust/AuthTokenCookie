@@ -1,5 +1,4 @@
-// main_test.go
-package main
+package authtokencookie_test
 
 import (
 	"context"
@@ -7,20 +6,22 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	authtokencookie "github.com/K8Trust/AuthTokenCookie"
 )
 
 // fakeAuthServer creates a test HTTP server simulating the auth server.
 func fakeAuthServer(t *testing.T, status int, token string) *httptest.Server {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		// Add cookie before writing status
+		// Set cookie before writing status
 		cookie := &http.Cookie{
 			Name:  "token",
 			Value: token,
 		}
-		w.WriteHeader(status)
 		http.SetCookie(w, cookie)
-		resp := AuthResponse{AccessToken: token}
+		w.WriteHeader(status)
+		resp := authtokencookie.AuthResponse{AccessToken: token}
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			t.Fatalf("could not encode response: %v", err)
 		}
@@ -29,40 +30,33 @@ func fakeAuthServer(t *testing.T, status int, token string) *httptest.Server {
 }
 
 func TestAuthPluginSuccess(t *testing.T) {
-	// Create a fake auth server that returns HTTP 200 with a token.
 	fakeServer := fakeAuthServer(t, http.StatusOK, "test-token")
 	defer fakeServer.Close()
-	// fakeServer.URL, // Full URL; our plugin will parse this.
-	// Create a config using the fake auth server's URL.
 
-	// Create a simple next handler.
+	// Next handler that simply writes OK.
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("OK"))
+		w.Write([]byte("OK"))
 	})
 
-	cfg := &Config{
+	cfg := &authtokencookie.Config{
 		AuthEndpoint: fakeServer.URL,
-		Timeout:      Timeout,
+		Timeout:      authtokencookie.Timeout,
 	}
 
-	// Create the plugin.
-	plugin, err := New(context.Background(), nextHandler, cfg, "auth_cookie")
+	plugin, err := authtokencookie.New(context.Background(), nextHandler, cfg, "auth_cookie")
 	if err != nil {
 		t.Fatalf("failed to create plugin: %v", err)
 	}
 
-	// Create a test request with required headers.
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
 	req.Header.Set("x-api-key", "dummy")
 	req.Header.Set("x-account", "dummy")
 
-	// Record the response.
 	rec := httptest.NewRecorder()
 	plugin.ServeHTTP(rec, req)
 	res := rec.Result()
 	defer res.Body.Close()
 
-	// Verify that a cookie named "token" with the correct value is set.
 	cookies := res.Cookies()
 	if len(cookies) == 0 {
 		t.Fatal("expected a cookie to be set in the response")
@@ -86,21 +80,18 @@ func TestAuthPluginSuccess(t *testing.T) {
 }
 
 func TestAuthPluginUnauthorized(t *testing.T) {
-
-	// Next handler that should not be called.
-	nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+	// Next handler should not be called for unauthorized requests.
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("next handler should not be called for unauthorized requests")
 	})
 
-	cfg := CreateConfig()
+	cfg := authtokencookie.CreateConfig()
 
-	// Create the plugin.
-	plugin, err := New(context.Background(), nextHandler, cfg, "auth_cookie")
+	plugin, err := authtokencookie.New(context.Background(), nextHandler, cfg, "auth_cookie")
 	if err != nil {
 		t.Fatalf("failed to create plugin: %v", err)
 	}
 
-	// Create a test request without required headers.
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
 	rec := httptest.NewRecorder()
 	plugin.ServeHTTP(rec, req)

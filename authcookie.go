@@ -1,4 +1,4 @@
-package main
+package authtokencookie
 
 import (
 	"context"
@@ -26,10 +26,12 @@ func CreateConfig() *Config {
 	}
 }
 
+// AuthResponse represents the authentication response.
 type AuthResponse struct {
 	AccessToken string `json:"accessToken"`
 }
 
+// AuthPlugin is the middleware that handles authentication.
 type AuthPlugin struct {
 	next         http.Handler
 	authEndpoint string
@@ -37,16 +39,18 @@ type AuthPlugin struct {
 	logger       *log.Logger
 }
 
+// Timeout is the default timeout used for HTTP requests.
 const Timeout = 5 * time.Second
 
-// New creates a new instance of the plugin.
+// New creates a new instance of the AuthPlugin.
+// It performs minimal initialization and returns an http.Handler.
 func New(_ context.Context, next http.Handler, cfg *Config, name string) (http.Handler, error) {
 	if cfg.AuthEndpoint == "" {
 		return nil, fmt.Errorf("missing auth endpoint")
 	}
 
 	logger := log.New(os.Stdout, "[AuthPlugin] ", log.LstdFlags)
-	logger.Printf("Initializing plugin with endpoint: %s, timeout: %v", cfg.AuthEndpoint, Timeout)
+	logger.Printf("Initializing plugin with endpoint: %s, timeout: %v", cfg.AuthEndpoint, cfg.Timeout)
 
 	return &AuthPlugin{
 		next:         next,
@@ -56,7 +60,7 @@ func New(_ context.Context, next http.Handler, cfg *Config, name string) (http.H
 	}, nil
 }
 
-// maskSensitive masks sensitive data in logs
+// maskSensitive masks sensitive string data.
 func maskSensitive(s string) string {
 	if len(s) <= 4 {
 		return "****"
@@ -64,7 +68,7 @@ func maskSensitive(s string) string {
 	return s[:4] + "****"
 }
 
-// sameSiteToString converts SameSite value to human-readable string
+// sameSiteToString converts the SameSite constant to a human-readable string.
 func sameSiteToString(s http.SameSite) string {
 	switch s {
 	case http.SameSiteLaxMode:
@@ -78,6 +82,8 @@ func sameSiteToString(s http.SameSite) string {
 	}
 }
 
+// ServeHTTP processes incoming requests.
+// It checks for required headers, calls the auth endpoint, sets a cookie, and passes the request to the next handler.
 func (a *AuthPlugin) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	apiKey := req.Header.Get("x-api-key")
 	tenant := req.Header.Get("x-account")
@@ -105,7 +111,7 @@ func (a *AuthPlugin) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	client := &http.Client{Timeout: Timeout}
 	resp, err := client.Do(authReq)
 	if err != nil {
-		if err, ok := err.(net.Error); ok && err.Timeout() {
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 			a.logger.Printf("Auth request timed out after %v: %v", Timeout, err)
 			http.Error(rw, `{"error": "Auth service timeout"}`, http.StatusGatewayTimeout)
 			return
@@ -158,25 +164,4 @@ func (a *AuthPlugin) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	a.logger.Printf("Auth successful for account: %s, passing request to next handler", tenant)
 	a.next.ServeHTTP(rw, req)
-}
-
-func main() {
-	logger := log.New(os.Stdout, "[AuthPlugin] ", log.LstdFlags)
-
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("OK"))
-	})
-
-	cfg := CreateConfig()
-
-	handler, err := New(context.Background(), nextHandler, cfg, "auth-cookie")
-	if err != nil {
-		logger.Fatalf("Failed to create handler: %v", err)
-	}
-
-	addr := ":8080"
-	logger.Printf("Starting server on %s", addr)
-	if err := http.ListenAndServe(addr, handler); err != nil {
-		logger.Fatalf("Server failed to start: %v", err)
-	}
 }
