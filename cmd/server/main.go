@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"os"
 
-	authtokencookie "github.com/K8Trust/AuthTokenCookie"
+	authtokencookie "github.com/K8Trust/authtokencookie"
 )
 
 func main() {

@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	authtokencookie "github.com/K8Trust/AuthTokenCookie"
+	authtokencookie "github.com/K8Trust/authtokencookie"
 )
 
 // fakeAuthServer creates a test HTTP server simulating the auth server.
